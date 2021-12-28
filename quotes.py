@@ -1,15 +1,21 @@
-#### System
+# System
 import sys
 import time
-#### Selenium
+# Selenium
 from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.common.keys import Keys
-### Local
+from selenium.webdriver.common.by import By
+# Local
 import excel
 
-def startDriver(d):
-	driver = webdriver.Firefox() if d == 'f' else webdriver.PhantomJS()
-	return driver
+def startDriver(headless=False):
+	if headless:
+		fireFoxOptions = Options()
+		fireFoxOptions.headless = True
+		return webdriver.Firefox(options=fireFoxOptions)
+	else:
+		return webdriver.Firefox()
 
 def scrollDown(driver):
     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -17,7 +23,7 @@ def scrollDown(driver):
 class QuoteOrder:
 
 	def __init__(self):
-		self.url = "https://www.brainyquote.com/search_results.html?q="
+		self.url = "https://www.brainyquote.com/search_results?q="
 		self.totalQuotes = 0
 		self.driver = None
 		self.worksheet = None
@@ -27,31 +33,40 @@ class QuoteOrder:
 		self.url = self.url + query
 
 	def getQuotes(self):
-		loopcatch = 0
-		index = 0
+		total_pages = 1
+		current_page = 1
 
-		quote_container = self.driver.find_element_by_id('quotesList')
-		quote_list = quote_container.find_elements_by_class_name('m-brick')
+		# Get total pages
+		try:
+			pagination = self.driver.find_element(By.CLASS_NAME, 'pagination')
+			page_links = pagination.find_elements(By.CLASS_NAME, 'page-link')
+			total_pages = int(page_links[len(page_links)-2].text)
+		except:
+			pass
 
-		while len(quote_list) > index and loopcatch < 4:
-			loopcatch = loopcatch + 1 if len(quote_list) == index else 0
+
+		while current_page < total_pages:
+
+			self.driver.get(self.url+'&pg='+str(current_page))
+			time.sleep(1)
+			quote_container = self.driver.find_element(By.ID, 'quotesList')
+			quote_list = quote_container.find_elements(By.CLASS_NAME, 'grid-item')
 
 			# Save quotes on page from last saved
-			for quote in range(index,len(quote_list)):
+			for i in range(0,len(quote_list)):
+				if 'm-ad-brick' in quote_list[i].get_attribute('class').split():
+					# Ad found
+					continue
 
-				quote = quote_list[index].find_element_by_class_name('b-qt').text
-				author = quote_list[index].find_element_by_class_name('bq-aut').text
+				quote = quote_list[i].find_element(By.CLASS_NAME, 'b-qt').text
+				author = quote_list[i].find_element(By.CLASS_NAME, 'bq-aut').text
 
-				print("{0:3}. {1:20} \n\t -{2:20}".format(index,quote[:40],author))
+				# print("{0:3}. {1:20} \n\t -{2:20}".format(i,quote[:100],author))
 				excel.saveData(self,quote,author)
-				index += 1
 
-			# Check for more quotes
-			scrollDown(self.driver)
-			time.sleep(2)
-
-			quote_container = self.driver.find_element_by_id('quotesList')
-			quote_list = quote_container.find_elements_by_class_name('m-brick')
+			# Go to next page
+			current_page += 1
+			
 
 def createOrder(query):
 	order = QuoteOrder()
@@ -61,17 +76,19 @@ def createOrder(query):
 	return order
 
 def run(order):
-	order.driver = startDriver('f')
+	order.driver = startDriver(True)
 	order.driver.get(order.url)
 	order.getQuotes()
 	order.driver.quit()
 
 def main():
-	# python quotes.py <query>
-	query = sys.argv[1]
+	if len(sys.argv) == 2:
+		query = sys.argv[1]
+	else:
+		print("Usage: python quotes.py <query>")
+		return
 	order = createOrder(query)
 	run(order)
-
 
 if __name__ == "__main__":
 	main()
